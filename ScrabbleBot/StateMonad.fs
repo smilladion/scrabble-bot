@@ -1,6 +1,5 @@
 ﻿// Insert your StateMonad.fs from Assignment 6 here. All modules must be internal.
 
-
 module internal StateMonad
 
     type Error = 
@@ -105,4 +104,4 @@ module internal StateMonad
                 match Map.tryFind x m with
                 | Some _ -> Failure (VarExists x)
                 | None   -> if s.reserved.Contains x then Failure (ReservedName x)
-                            else Success((), {s with vars = Map.add x 0 m :: s.vars}))      
+                            else Success((), {s with vars = Map.add x 0 m :: s.vars}))

@@ -1,4 +1,4 @@
-﻿namespace YourClientName
+﻿namespace Funky
 
 open ScrabbleUtil
 open ScrabbleUtil.ServerCommunication
@@ -119,4 +119,3 @@ module Scrabble =
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
         fun () -> playGame cstream tiles (State.mkState board dict playerNumber handSet)
-        
