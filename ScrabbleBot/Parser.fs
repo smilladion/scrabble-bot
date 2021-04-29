@@ -40,24 +40,25 @@ module internal Parser
     let (.>*>) p1 p2  = p1 .>> spaces .>> p2
     let (>*>.) p1 p2  = p1 >>. spaces >>. p2
 
-    let parenthesise p  = pchar '(' >*>. spaces >*>. p .>*> spaces .>*> pchar ')'
-    let curlybrackets p = pchar '{' >*>. spaces >*>. p .>*> spaces .>*> pchar '}'
+    let parenthesise p  = pchar '(' >*>. p .>*> pchar ')'
+    let curlybrackets p = pchar '{' >*>. p .>*> pchar '}'
     let apostrophise p = pchar ''' >>. p .>> pchar '''
 
-    let implode cs =         
-        let folder = fun c s -> (string c) + s         
-        List.foldBack folder cs ""      
-        
-    let tupleToList (c: char, l:char list) =         
-        c :: l      
-        
-    let punderscore = pchar '_'      
-    
+    let implode cs =
+        let folder = fun c s -> (string c) + s
+        List.foldBack folder cs ""
+
+    let tupleToList (c: char, l:char list) =
+        c :: l
+
+    let punderscore = pchar '_'
+
     let pid = (pletter <|> punderscore) .>>. (palphanumeric <|> punderscore |> many) |>> tupleToList |>> implode
-        
+
     let unop a b = a >*>. b
     let binop op a b = a .>*> op .>*>. b
 
+    // Aexp Parsers
     let TermParse, tref = createParserForwardedToRef<aExp>()
     let ProdParse, pref = createParserForwardedToRef<aExp>()
     let AtomParse, aref = createParserForwardedToRef<aExp>()
@@ -78,6 +79,11 @@ module internal Parser
     let ParParse = parenthesise TermParse
     let PVParse  = pPointValue >*>. ParParse |>> PV <?> "PointValue"
 
+    let AexpParse = TermParse
+
+    // Cexp parsers
+    // It is written in a confusing way below this point, this is due to the mutual recursion between Aexp and Cexp.
+    // there is probably a better way :-)
 
     let CharacterParse, cref = createParserForwardedToRef<cExp>()
 
@@ -85,16 +91,16 @@ module internal Parser
 
     do aref := choice [NegParse; PVParse; NParse; CTIParse; ParParse; VParse]
 
-    let AexpParse = TermParse 
-
     let CexpParse = CharacterParse
     let CParse    = pchar ''' >>. anyChar .>> pchar ''' |>> C <?> "Char"
     let CVParse   = pCharValue >*>. parenthesise TermParse |>> CV <?> "CharacterValue"
     let TUParse   = pToUpper  >*>. parenthesise CharacterParse |>> ToUpper <?> "ToUpper"
     let TLParse   = pToLower  >*>. parenthesise CharacterParse |>> ToLower <?> "ToLower"
-    let ITCParse  = pIntToChar >*>. parenthesise TermParse |>> IntToChar <?> "IntToChar"   
+    let ITCParse  = pIntToChar >*>. parenthesise TermParse |>> IntToChar <?> "IntToChar"
     do cref := choice [TUParse; TLParse; ITCParse; CVParse; CParse]
 
+
+    // Bexp parsers
     let AndOrParse, aoref = createParserForwardedToRef<bExp>()
     let EqualityParse, eref = createParserForwardedToRef<bExp>()
     let AtomBParse, abref = createParserForwardedToRef<bExp>()
@@ -104,51 +110,110 @@ module internal Parser
     let TParse               = pTrue |>> (fun _ -> TT) <?> "True"
     let FParse               = pFalse |>> (fun _ -> FF) <?> "False"
     let EqualParse           = TermParse .>*> pchar '=' .>*>. TermParse |>> AEq <?> "AEq"
-    let NotEqualParse        = TermParse .>*> pstring "<>" .>*>. TermParse |>> (fun (x, y) -> Not (AEq (x, y))) <?> "NotAEq"
+    let NotEqualParse        = TermParse .>*> pstring "<>" .>*>. TermParse |>> (fun (x,y) -> x .<>. y) <?> "NotAEq"
     let LessThanParse        = TermParse .>*> pchar '<' .>*>. TermParse |>> ALt <?> "ALt"
-    let MoreThanParse        = TermParse .>*> pchar '>' .>*>. TermParse |>> (fun (x, y) -> Conj(Not(AEq(x, y)), (Not (ALt(x,y))))) <?> "AMt"
-    let LessThanOrEqualParse = TermParse .>*> pstring "<=" .>*>. TermParse |>> (fun (x, y) -> Not (Conj(Not (ALt(x, y)), Not (AEq(x, y)))))  <?> "LTOEq"
-    let MoreThanOrEqualParse = TermParse .>*> pstring ">=" .>*>. TermParse |>> (fun (x, y) -> Not(ALt (x, y))) <?> "MTOEq"
+    let MoreThanParse        = TermParse .>*> pchar '>' .>*>. TermParse |>> (fun (x,y) -> x .>. y) <?> "AMt"
+    let LessThanOrEqualParse = TermParse .>*> pstring "<=" .>*>. TermParse |>> (fun (x,y) -> x .<=. y)  <?> "LTOEq"
+    let MoreThanOrEqualParse = TermParse .>*> pstring ">=" .>*>. TermParse |>> (fun (x,y) -> x .>=. y) <?> "MTOEq"
     let NotParse             = pchar '~' >*>. AndOrParse |>> Not <?> "Not"
     let ConjParse            = EqualityParse .>*> pstring "/\\" .>*>. AndOrParse |>> Conj <?> "Conj"
-    let DisParse             = EqualityParse .>*> pstring "\\/" .>*>. AndOrParse |>> (fun (x, y) -> Not(Conj ((Not x), (Not y)))) <?> "Dis"
+    let DisParse             = EqualityParse .>*> pstring "\\/" .>*>. AndOrParse |>> (fun (x,y) -> x .||. y) <?> "Dis"
     let IsDigitParse         = pIsDigit >*>. parenthesise CharacterParse |>> IsDigit <?> "IsDigit"
     let IsLetterParse        = pIsLetter >*>. parenthesise CharacterParse |>> IsLetter <?> "IsLetter"
     let BParParse            = parenthesise AndOrParse
+
     do aoref := choice [ConjParse; DisParse; EqualityParse]
     do eref := choice [EqualParse; NotEqualParse; LessThanOrEqualParse; MoreThanOrEqualParse; LessThanParse; MoreThanParse; AtomBParse]
     do abref := choice [IsDigitParse; IsLetterParse; NotParse; TParse; FParse; BParParse]
 
-    let SeqParse, seref = createParserForwardedToRef<stm>()
-    let stmntParse, sref = createParserForwardedToRef<stm>()
-    let StatementParse = SeqParse
-    
-    // We know there are several mistakes here
-    let DeclareParse  = pdeclare >>. spaces1 >>. pid |>> Declare <?> "Declare" 
-    let SequenceParse = stmntParse .>*> pchar ';' .>*>. SeqParse |>> (fun (x, y) -> Seq(x, y)) <?> "Seq"
-    let ITEParse      = pif >*>. BexpParse .>*> pthen .>*>. curlybrackets stmntParse .>*> pelse .>*>. curlybrackets stmntParse |>> (fun ((x,y), z) -> ITE (x, y, z)) <?> "ITE"
-    let ITParse       =  pif >*>. BexpParse .>*> pthen .>*>. curlybrackets stmntParse |>> (fun (x, y) -> ITE (x, y, Skip)) <?> "IT"
-    let WhileParse    = pwhile >*>. BexpParse .>*> pstring "do" .>*>. stmntParse |>> While <?> "While" 
+    //Statement parsers
+
+    let stmntParse, seref = createParserForwardedToRef<stm>()
+    let SeqParse, sref = createParserForwardedToRef<stm>()
+
+    let DeclareParse  = pdeclare >>. spaces1 >>. pid |>> Declare <?> "Declare"
+    let SequenceParse = SeqParse .>*> pchar ';' .>*>. stmntParse |>> (fun (x, y) -> Seq(x, y)) <?> "Seq"
+    let ITEParse      = pif >*>. parenthesise BexpParse .>*> pthen .>*>. curlybrackets stmntParse .>*> pelse .>*>. curlybrackets stmntParse |>> (fun ((x,y), z) -> ITE (x, y, z)) <?> "ITE"
+    let ITParse       = pif >*>. parenthesise BexpParse .>*> pthen .>*>. curlybrackets stmntParse |>> (fun (x, y) -> ITE (x, y, Skip)) <?> "IT"
+    let WhileParse    = pwhile >*>. parenthesise BexpParse .>*> pstring "do" .>*>. curlybrackets stmntParse |>> While <?> "While"
     let SkipParse     = pstring "Skip" |>> (fun _ -> Skip) <?> "Skip"
     let AssParse      = pid .>*> (pstring ":=") .>*>. TermParse |>> (fun (x, y) -> Ass (x, y)) <?> "Ass"
-    do seref := choice [SequenceParse; stmntParse]
+    do seref := choice [SequenceParse; SeqParse]
     do sref := choice [AssParse; DeclareParse; ITEParse; ITParse; WhileParse; SkipParse;]
 
-    (* The rest of your parser goes here *)
+
+(* These five types will move out of this file once you start working on the project *)
+    (* type coord      = int * int
+    type squareProg = Map<int, string>
+    type boardProg  = {
+            prog       : string;
+            squares    : Map<int, squareProg>
+            usedSquare : int
+            center     : coord
+
+            isInfinite : bool   // For pretty-printing purposes only
+            ppSquare   : string // For pretty-printing purposes only
+        } *)
 
     type word   = (char * int) list
     type square = Map<int, word -> int -> int -> int>
 
-    let parseSquareFun _ = failwith "not implemented"
-
-    let parseBoardFun _ = failwith "not implemented"
-
     type boardFun = coord -> square option
+
     type board = {
         center        : coord
         defaultSquare : square
         squares       : boardFun
     }
 
-    let parseBoardProg (bp : boardProg) : board = failwith "not implemented"
+    //type squareFun = word -> int -> int -> int
 
+    // 7.12
+    // TODO, it prints the correct values, but what happens to n?
+    let parseSquareFun (sqp: squareProg) =
+        Map.map (fun n str -> ((stmntToSquareFun (run stmntParse str |> getSuccess)))) sqp
+
+    //7.13
+    // This terminates locally, and gives the correct output, but on code-judge it says time limit exceeded after a few minutes.
+    (*
+    The output I get locally:
+    Some "single letter score"
+    Some "double letter score"
+    Some "triple letter score"
+    Some "double word score"
+    Some "triple word score"
+    None
+    *)
+    let parseBoardFun str m =
+         stmntToBoardFun (run stmntParse str |> getSuccess) m
+
+    (*
+    The output I get on my computer:
+
+    # # # # # # # # # # # # # # # # # # # # #
+    # # # # # # # # # # # # # # # # # # # # #
+    # # # # # # # # # # # # # # # # # # # # #
+    # # # 9 3 3 4 3 3 3 9 3 3 3 4 3 3 9 # # #
+    # # # 3 6 3 3 3 5 3 3 3 5 3 3 3 6 3 # # #
+    # # # 3 3 6 3 3 3 4 3 4 3 3 3 6 3 3 # # #
+    # # # 4 3 3 6 3 3 3 4 3 3 3 6 3 3 4 # # #
+    # # # 3 3 3 3 6 3 3 3 3 3 6 3 3 3 3 # # #
+    # # # 3 5 3 3 3 5 3 3 3 5 3 3 3 5 3 # # #
+    # # # 3 3 4 3 3 3 4 3 4 3 3 3 4 3 3 # # #
+    # # # 9 3 3 4 3 3 3 3 3 3 3 4 3 3 9 # # #
+    # # # 3 3 4 3 3 3 4 3 4 3 3 3 4 3 3 # # #
+    # # # 3 5 3 3 3 5 3 3 3 5 3 3 3 5 3 # # #
+    # # # 3 3 3 3 6 3 3 3 3 3 6 3 3 3 3 # # #
+    # # # 4 3 3 6 3 3 3 4 3 3 3 6 3 3 4 # # #
+    # # # 3 3 6 3 3 3 4 3 4 3 3 3 6 3 3 # # #
+    # # # 3 6 3 3 3 5 3 3 3 5 3 3 3 6 3 # # #
+    # # # 9 3 3 4 3 3 3 9 3 3 3 4 3 3 9 # # #
+    # # # # # # # # # # # # # # # # # # # # #
+    # # # # # # # # # # # # # # # # # # # # #
+    # # # # # # # # # # # # # # # # # # # # #
+    *)
+    let parseBoardProg (bp : boardProg) : board =
+        let nm = Map.map (fun n sqp -> (parseSquareFun sqp)) bp.squares
+        { center        = bp.center
+          defaultSquare = (nm.TryFind bp.usedSquare |> Option.get)
+          squares       = parseBoardFun bp.prog nm }

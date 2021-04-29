@@ -1,15 +1,38 @@
 ﻿// Insert your Dictionary.fsi file here. All modules must be internal.
 
 module internal Dictionary
+    type Dict =
+        | Node of bool * Map<char, Dict>
 
-    type Dict = Temp of unit // Not implemented
+    let empty () = Node (false, Map.empty)
 
-    // If you have made a lookup function you may include it here, but it will be generated for you by the project.
+    let insert (s: string) dict =
+        let rec aux =
+            function
+            | [], Node (_, m)      -> Node (true, m)
+            | x :: xs, Node (b, m) ->
+                match m.TryFind(x) with
+                | None   -> Node (b, m.Add(x, aux (xs, empty ())))
+                | Some v -> Node (b, m.Add(x, aux (xs, v)))
 
-    let empty : unit -> Dict = fun _ -> failwith "Not implemented"
-    let insert : string -> Dict -> Dict = fun _ _ -> failwith "Not implemented"
-    let step : char -> Dict -> (bool * Dict) option = fun _ _ -> failwith "Not implemented"
+        aux (Seq.toList s, dict)
 
+    let lookup (s: string) (dict : Dict) =
+        let rec aux =
+            function
+            | [], Node (b, _)      -> b
+            | x :: xs, Node (_, m) ->
+                match m.TryFind(x) with
+                | None   -> false
+                | Some v -> aux (xs, v)
 
-    // Only implement reverse if you have made a Gaddag
-    let reverse : Dict -> (bool * Dict) option = fun _ -> failwith "Not implemented"
+        aux (Seq.toList s, dict)
+
+    let step c dict =
+        let aux =
+            function
+            | c1, Node (b, m) ->
+                match m.TryFind(c1) with
+                | None                -> None
+                | Some (Node(bo, m1)) -> Some (bo, Node(bo, m1))
+        aux (c, dict)
